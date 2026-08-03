@@ -6,6 +6,7 @@ import {promises as fs} from "fs";
 import path from "path";
 import { exit, exitCode } from "process";
 import { clearTimeout } from "timers";
+import { rejects } from "assert";
 
 const client = createClient({url: process.env.REDIS_URL});
 
@@ -152,10 +153,86 @@ client.connect().then(async() => {
             }
         }
 
-    
-        
-        if(result.language == Language.JS){
 
+        if(result.language == Language.JS){
+            const {id, sourceCode} = result;
+
+            const filePath = path.join(__dirname, "../code/a.js");
+            await fs.writeFile(filePath, sourceCode)
+            const childProcess = spawn("bun", [`${filePath}`]);
+            let timerId;
+            let stderr = "";;
+            let stdout = "";
+
+            try{
+                await Promise.race([
+                    new Promise<void>((resolve, reject) => {
+                        childProcess.stderr.on("data", (data) => {
+                            stderr += data.toString();
+                        })
+                        childProcess.stdout.on("data", (data) => {
+                            stdout += data.toString();
+                        })
+
+                        childProcess.on("close", (exitCode) => {
+                            if(exitCode == 0) resolve();
+                            else reject(new Error("executation failed"));
+                        })
+                    }),
+                    new Promise((_, reject) => {
+                        timerId = setTimeout(() => {
+                            reject(new Error("TIMEOUT"))
+                        }, 5000)
+                    })
+                ]);
+
+                const res = await prisma.submission.update({
+                    where: {
+                        id: id
+                    },
+                    data: {
+                        status: Status.SUCCESS,
+                        stdout: stdout
+                    }
+                })
+
+
+                console.log(res);
+
+            }
+            catch(err: any){
+                if(err.message == "executation failed"){
+                    const res = await prisma.submission.update({
+                        where: {
+                            id: id
+                        },
+                        data: {
+                            status: Status.ERROR,
+                            stderr: stderr
+                        }
+                    });
+
+                    console.log(res)
+                }
+
+                if(err.message == "TIMEOUT"){
+                    const res = await prisma.submission.update({
+                        where: {
+                            id: id
+                        },
+                        data: {
+                            status: Status.TIME_LIMIT_EXCEED
+                        }
+                    })
+
+                    console.log(res);
+                }
+            }
+            finally{
+                if(timerId){
+                    clearTimeout(timerId);
+                }
+            }
         }
 
         if(result.language == Language.TS){
