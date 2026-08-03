@@ -4,7 +4,7 @@ import { createClient } from "redis";
 import { spawn } from "child_process";
 import {promises as fs} from "fs";
 import path from "path";
-import { exit, exitCode } from "process";
+import { exit, exitCode, finalization } from "process";
 import { clearTimeout } from "timers";
 import { rejects } from "assert";
 
@@ -201,7 +201,7 @@ client.connect().then(async() => {
 
             }
             catch(err: any){
-                if(err.message == "executation failed"){
+                if(err.message == "execution failed"){
                     const res = await prisma.submission.update({
                         where: {
                             id: id
@@ -236,7 +236,84 @@ client.connect().then(async() => {
         }
 
         if(result.language == Language.TS){
+            const {id, sourceCode} = result;
+            const filePath = path.join(__dirname, "../code/a.ts");
 
+            await fs.writeFile(filePath, sourceCode);
+
+            const childProcess = spawn("bun", [`${filePath}`]);
+            let timerId;
+            let stderr;
+            let stdout;
+
+            try{
+                await Promise.race([
+                    new Promise<void>((resolve, reject) => {
+                        childProcess.stderr.on("data", (data) => {
+                            stderr += data.toString();
+                        })
+                        childProcess.stdout.on("data", (data) => {
+                            stdout += data.toString();
+                        })
+
+                        childProcess.on("close", (exitCode) => {
+                            if(exitCode == 0) resolve();
+                            else reject(new Error("execution failed"))
+                        })
+                    }),
+                    new Promise((_, reject) => {
+                        timerId = setTimeout(() => {
+                            reject(new Error("TIMEOUT"));
+                        }, 5000)
+                    })
+                ]);
+
+                const res = await prisma.submission.update({
+                    where: {
+                        id: id
+                    },
+                    data: {
+                        status: Status.SUCCESS,
+                        stdout: stdout
+                    }
+                })
+
+                console.log(res);
+
+            }catch(err: any){
+                if(err.message == "execution failed"){
+                    const res = await prisma.submission.update({
+                        where: {
+                            id
+                        },
+                        data: {
+                            status: Status.ERROR,
+                            stderr
+                        }
+                    })
+
+                    console.log(res);
+                }
+                
+                if(err.message == "TIMEOUT"){
+                    childProcess.kill("SIGKILL");
+                    const res = await prisma.submission.update({
+                        where: {
+                            id
+                        },
+                        data: {
+                            status: Status.TIME_LIMIT_EXCEED,
+                        }
+                    })
+    
+                    console.log(res);
+                }
+            }
+            finally{
+                if(timerId){
+                    clearTimeout(timerId)
+                }
+            }
         }
 
 
