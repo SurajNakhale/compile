@@ -1,0 +1,13 @@
+{
+  "name": "@repo/database",
+  "private": true,
+  "exports": {
+    ".": "./db.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}
