@@ -1,159 +1,239 @@
-# Turborepo starter
+# Compile
 
-This Turborepo starter is maintained by the Turborepo core team.
+A distributed code execution system built using a microservice architecture. Code execution is performed inside isolated Docker containers, while Redis queues enable asynchronous communication between services.
 
-## Using this example
+---
 
-Run the following command:
+## Architecture
 
-```sh
-npx create-turbo@latest
+![System Architecture](./docs/architecture.png)
+
+---
+
+## Request Flow
+
+```text
+POST /submission
+Frontend -----------------------> Backend
+                                     │
+                         Store Submission (PENDING)
+                                     │
+             Push submissionId → submission-queue
+                                     │
+                                  Worker
+                                     │
+                    Update Status → PROCESSING
+                                     │
+                           POST /execute
+                                     │
+                           Execution Service
+                                     │
+                     Execute Code inside Docker
+                                     │
+          Push Result → execution-results queue
+                                     │
+                                  Worker
+                                     │
+                     Update Submission Result
+                                     │
+                                PostgreSQL
 ```
 
-## What's inside?
+---
 
-This Turborepo includes the following packages/apps:
+## Components
 
-### Apps and Packages
+- **Frontend** – Submits code and polls for execution status.
+- **Backend** – Creates submissions and pushes jobs to the submission queue.
+- **Worker** – Consumes Redis queues, communicates with the execution service, and updates the database.
+- **Execution Service** – Executes user code inside Docker containers.
+- **Redis** – Message broker between services.
+- **PostgreSQL** – Stores submissions and execution results.
+- **Docker** – Provides isolated execution environments.
 
-- `docs`: a [Next.js](https://nextjs.org/) app
-- `web`: another [Next.js](https://nextjs.org/) app
-- `@repo/ui`: a stub React component library shared by both `web` and `docs` applications
-- `@repo/eslint-config`: `eslint` configurations (includes `eslint-config-next` and `eslint-config-prettier`)
-- `@repo/typescript-config`: `tsconfig.json`s used throughout the monorepo
+---
 
-Each package/app is 100% [TypeScript](https://www.typescriptlang.org/).
+## Supported Languages
 
-### Utilities
+- C++
+- JavaScript
+- TypeScript
+- Python
 
-This Turborepo has some additional tools already setup for you:
+---
 
-- [TypeScript](https://www.typescriptlang.org/) for static type checking
-- [ESLint](https://eslint.org/) for code linting
-- [Prettier](https://prettier.io) for code formatting
+## Tech Stack
 
-### Build
+- Node.js
+- TypeScript
+- Express
+- PostgreSQL
+- Prisma ORM
+- Redis
+- Docker
 
-To build all apps and packages, run the following command:
+---
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
+## How to Use
 
-```sh
-cd my-turborepo
-turbo build
+### 1. Clone the Repository
+
+```bash
+git clone <repository-url>
+cd <repository-name>
 ```
 
-Without global `turbo`, use your package manager:
+### 2. Install Dependencies
 
-```sh
-cd my-turborepo
-npx turbo build
-bun dlx turbo build
-bun exec turbo build
+```bash
+bun install
 ```
 
-You can build a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
+### 3. Configure Environment Variables
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
+Create a `.env` file for each service.
 
-```sh
-turbo build --filter=docs
+### Backend
+
+```env
+DATABASE_URL=
+REDIS_URL=
+SUBMISSION_QUEUE=submission-queue
 ```
 
-Without global `turbo`:
+### Worker
 
-```sh
-npx turbo build --filter=docs
-bun exec turbo build --filter=docs
-bun exec turbo build --filter=docs
+```env
+DATABASE_URL=
+REDIS_URL=
+SUBMISSION_QUEUE=submission-queue
+EXECUTION_QUEUE=execution-results
+EXECUTION_SERVICE_URL=http://localhost:3002/execute
 ```
 
-### Develop
+### Execution Service
 
-To develop all apps and packages, run the following command:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo dev
+```env
+REDIS_URL=
+EXECUTION_QUEUE=execution-results
 ```
 
-Without global `turbo`, use your package manager:
+---
 
-```sh
-cd my-turborepo
-npx turbo dev
-bun exec turbo dev
-bun exec turbo dev
+### 4. Generate Prisma Client
+
+```bash
+bunx prisma generate
 ```
 
-You can develop a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
+---
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
+### 5. Build Docker Images
 
-```sh
-turbo dev --filter=web
+```bash
+docker build -t cpp-runner apps/execution-service/docker/cpp
+docker build -t node-runner apps/execution-service/docker/node
+docker build -t python-runner apps/execution-service/docker/python
 ```
 
-Without global `turbo`:
+---
 
-```sh
-npx turbo dev --filter=web
-bun exec turbo dev --filter=web
-bun exec turbo dev --filter=web
+### 6. Start Redis
+
+```bash
+docker run -d --name redis -p 6379:6379 redis
 ```
 
-### Remote Caching
+---
 
-> [!TIP]
-> Vercel Remote Cache is free for all plans. Get started today at [vercel.com](https://vercel.com/signup?utm_source=remote-cache-sdk&utm_campaign=free_remote_cache).
+### 7. Run the Services
 
-Turborepo can use a technique known as [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching) to share cache artifacts across machines, enabling you to share build caches with your team and CI/CD pipelines.
+Start each service in a separate terminal.
 
-By default, Turborepo will cache locally. To enable Remote Caching you will need an account with Vercel. If you don't have an account you can [create one](https://vercel.com/signup?utm_source=turborepo-examples), then enter the following commands:
+**Backend**
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo login
+```bash
+cd apps/backend
+bun run dev
 ```
 
-Without global `turbo`, use your package manager:
+**Worker**
 
-```sh
-cd my-turborepo
-npx turbo login
-bun exec turbo login
-bun exec turbo login
+```bash
+cd apps/worker
+bun run dev
 ```
 
-This will authenticate the Turborepo CLI with your [Vercel account](https://vercel.com/docs/concepts/personal-accounts/overview).
+**Execution Service**
 
-Next, you can link your Turborepo to your Remote Cache by running the following command from the root of your Turborepo:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
-
-```sh
-turbo link
+```bash
+cd apps/execution-service
+bun run dev
 ```
 
-Without global `turbo`:
+---
 
-```sh
-npx turbo link
-bun exec turbo link
-bun exec turbo link
+### 8. Submit Code
+
+```http
+POST /submission
 ```
 
-## Useful Links
+Example request:
 
-Learn more about the power of Turborepo:
+```json
+{
+  "code": "#include <iostream>\nusing namespace std;\nint main(){ cout << \"Hello World\"; }",
+  "language": "CPP"
+}
+```
 
-- [Tasks](https://turborepo.dev/docs/crafting-your-repository/running-tasks)
-- [Caching](https://turborepo.dev/docs/crafting-your-repository/caching)
-- [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching)
-- [Filtering](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters)
-- [Configuration Options](https://turborepo.dev/docs/reference/configuration)
-- [CLI Usage](https://turborepo.dev/docs/reference/command-line-reference)
+Example response:
+
+```json
+{
+  "submissionId": "fba0afae-2abc-4c3e-a3e5-4ef87c6f819f",
+  "status": "PENDING"
+}
+```
+
+---
+
+### 9. Check Submission Status
+
+```http
+GET /submission/:submissionId
+```
+
+Example response:
+
+```json
+{
+  "status": "SUCCESS",
+  "stdout": "Hello World",
+  "stderr": "",
+  "compileOutput": ""
+}
+```
+
+---
+
+## Project Structure
+
+```text
+apps/
+├── backend/
+├── worker/
+└── execution-service/
+    ├── docker/
+    │   ├── cpp/
+    │   ├── node/
+    │   └── python/
+    └── src/
+        ├── executor/
+        ├── lib/
+        └── route/
+```
+
+---
+
