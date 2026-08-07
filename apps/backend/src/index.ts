@@ -1,8 +1,6 @@
-import { prisma } from "@repo/database";
+import { prisma, Status } from "@repo/database";
 import express, { type Request, type Response } from "express";
 import { createClient } from "redis";
-// import { Language, Status } from "../../../packages/database/generated/prisma/enums";
-import { Language, Status } from "@repo/database/generated/prisma/enums";
 
 import { subSchema } from "./utils/types";
 import { errorResponse, successResponse } from "./utils/response";
@@ -13,7 +11,7 @@ const client = createClient({ url: env.redisUrl });
 
 app.use(express.json());
 
-async function pushToQueue(key: string, elements: {id: string}){
+async function pushToQueue(key: string, elements: {subId: string}){
     await client.lPush(key, JSON.stringify(elements));
 }
 
@@ -30,14 +28,14 @@ app.post("/submission", async (req: Request, res: Response) => {
     const newsubmission = await prisma.submission.create({
         data: {
             sourceCode: code,
-            language: language,
+            language,
             status: Status.PENDING
         }
     });
 
     try{
-        await pushToQueue("problems" , {
-            id: newsubmission.id
+        await pushToQueue("submission-queue" , {
+            subId: newsubmission.id
         });
     }
     catch(err){
@@ -53,6 +51,7 @@ app.post("/submission", async (req: Request, res: Response) => {
         return errorResponse(res, 500, err)
     }
     
+    console.log(newsubmission);
     return successResponse(res, 201, {
         status: newsubmission.status,
         submissionId: newsubmission.id

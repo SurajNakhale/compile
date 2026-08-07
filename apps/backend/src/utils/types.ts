@@ -1,5 +1,5 @@
 import z from "zod"
-import { Language } from "../../../../packages/database/generated/prisma/enums"
+import { Language } from "@repo/database"
 
 export const subSchema = z.object({
     code: z.string(),
